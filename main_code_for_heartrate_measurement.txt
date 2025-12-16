@@ -1,0 +1,419 @@
+classdef rupinderp < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                      matlab.ui.Figure
+        ProcessingPanelDeepLearningModel  matlab.ui.container.Panel
+        UploadYourVideoButton         matlab.ui.control.Button
+        ZoomAndExtractForeheadButton  matlab.ui.control.Button
+        ExtractFeaturesButton         matlab.ui.control.Button
+        CompareFeaturesButton         matlab.ui.control.Button
+        ConvolutionModelPanel         matlab.ui.container.Panel
+        ApplyImprovedFeatureSelectionButton  matlab.ui.control.Button
+        TrainandClassifyButton        matlab.ui.control.Button
+        CompareButton                 matlab.ui.control.Button
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: UploadYourVideoButton
+        function UploadYourVideoButtonPushed(app, event)
+            % Browse and select a video file
+            close all;
+            [filename, filepath] = uigetfile({'.mp4;.avi;.mov;.mkv', 'Video Files (*.mp4, *.avi, *.mov, *.mkv)'}, 'Select a video file');
+            if filename == 0
+                disp('No file selected.');
+                return;
+            end
+            
+            % Construct the full file path
+            videoPath = fullfile(filepath, filename);
+            
+            % Create a VideoReader object to read the video file
+            videoReader = VideoReader(videoPath);
+            
+            % Create a figure for displaying the video
+            
+            
+            
+            videoPlayer = vision.VideoPlayer;
+            frameFolder = 'frames';
+            if ~exist(frameFolder, 'dir')
+                mkdir(frameFolder);
+            end
+            
+            faceFolder = 'faces';
+            if ~exist(faceFolder, 'dir')
+                mkdir(faceFolder);
+            end
+            frameCount=0;
+            % Create a face detector object
+            faceDetector = vision.CascadeObjectDetector();
+            % Play the video frame by frame
+            while frameCount<30
+                %while hasFrame(videoReader)
+                videoFrame = readFrame(videoReader);
+                step(videoPlayer, videoFrame);
+                frameCount = frameCount + 1;
+                videoFrame = readFrame(videoReader);
+                
+                % Save the frame as an image
+                frameFilename = sprintf('frame_%04d.png', frameCount);
+                framePath = fullfile(frameFolder, frameFilename);
+                imwrite(videoFrame, framePath);
+                
+                % Convert video frame to grayscale for face detection
+                grayFrame = rgb2gray(videoFrame);
+                
+                % Apply Gaussian smoothing to reduce noise
+% sigma = standard deviation of the Gaussian filter
+% filterSize = size of the Gaussian filter
+sigma = 1.0;
+filterSize = 5;
+smoothedFrame = imgaussfilt(grayFrame, sigma, 'FilterSize', filterSize);
+
+% Apply median filtering to reduce noise while preserving edges
+filteredFrame = medfilt2(smoothedFrame, [3 3]);
+
+% Enhance the contrast of the image
+% 'imadjust' can be used for contrast stretching
+enhancedFrame = imadjust(filteredFrame);
+
+% Optionally, apply edge detection (e.g., using the Sobel operator)
+edgesFrame = edge(enhancedFrame, 'sobel');
+
+% Display the original and preprocessed frames for comparison
+figure;
+subplot(1, 4, 1);
+imshow(grayFrame);
+title('Original Grayscale Frame');
+
+subplot(1, 4, 2);
+imshow(smoothedFrame);
+title('Smoothed Frame');
+
+subplot(1, 4, 3);
+imshow(filteredFrame);
+title('Median Filtered Frame');
+
+subplot(1, 4, 4);
+imshow(edgesFrame);
+title('Edge Detection');
+                
+                % Detect faces in the frame
+                bbox = step(faceDetector, grayFrame);
+                
+                % Process each detected face
+                for i = 1:size(bbox, 1)
+                    face = imcrop(videoFrame, bbox(i, :));
+                    
+                    % Display frame and face in a figure
+                    figure(2);
+                    subplot(1,2,1);
+                    imshow(videoFrame);
+                    title(['Frame: ' frameFilename]);
+                    
+                    subplot(1,2,2);
+                    imshow(face);
+                    title(['Face ' num2str(frameCount)]);
+                    
+                    % Save the figure
+                    %                     figureFilename = sprintf('frame_%04d_face_%02d_fig.png', frameCount, i);
+                    %                     figurePath = fullfile(faceFolder, figureFilename);
+                    %                     saveas(gcf, figurePath);
+                    
+                    %close(gcf); % Close the figure
+                    
+                    % Save the extracted face
+                    faceFilename = sprintf('frame_%04d_face_%02d.png', frameCount, i);
+                    facePath = fullfile(faceFolder, faceFilename);
+                    imwrite(face, facePath);
+                end
+            end
+            save('uploadedvideo','videoReader','frameCount');
+            msgbox('Done');
+            % Clean up
+            %release(videoPlayer);
+            
+        end
+
+        % Callback function
+        function ExtractFrameandFacesButtonPushed(app, event)
+            % Load the face detection classifier
+            
+            
+            
+        end
+
+        % Button pushed function: ZoomAndExtractForeheadButton
+        function ZoomAndExtractForeheadButtonPushed(app, event)
+            load('uploadedvideo','videoReader','frameCount');
+            % Create a folder for saving extracted foreheads
+            foreheadFolder = 'forehead';
+            if ~exist(foreheadFolder, 'dir')
+                mkdir(foreheadFolder);
+            end
+            faceFolder='faces';
+            % Get a list of face image files in the 'faces' folder
+            faceFiles = dir(fullfile(faceFolder, '*.png'));
+            
+            % Initialize variables for figure layout
+            numCols = 5;  % Number of columns in the figure
+            numRows = ceil(numel(faceFiles) / numCols);  % Calculate number of rows
+            
+            % Create a figure for displaying extracted foreheads
+            figure(3);
+            
+            % Loop through all face images
+            for faceIdx = 1:numel(faceFiles)
+                % Read the face image
+                facePath = fullfile(faceFolder, faceFiles(faceIdx).name);
+                face = imread(facePath);
+                
+                % Assume forehead region is the top 1/3 of the face
+                foreheadHeight = size(face, 1) / 3;
+                forehead = face(1:foreheadHeight, :, :);
+                
+                % Zoom the extracted forehead
+                zoomFactor = 6;  % Change this value for desired zoom level
+                zoomedForehead = imresize(forehead, zoomFactor);
+                
+                % Calculate subplot position
+                figure(3)
+                hold on;
+                subplotIndex = (faceIdx - 1) + 1;
+                subplotPosition = [mod(subplotIndex - 1, numCols) / numCols, 1 - floor((subplotIndex - 1) / numCols) / numRows, 1 / numCols, 1 / numRows];
+                
+                % Display the zoomed forehead in the subplot
+                subplot('Position', subplotPosition);
+                imshow(zoomedForehead);
+                title(['Face ' num2str(faceIdx)]);
+                
+                figure(4);
+                subplot('Position', [0.05, 0.1, 0.3, 0.8]);
+                imshow(face);
+                title(['Extracted Face ' num2str(faceIdx)]);
+                
+                % Subplot for Original Forehead
+                subplot('Position', [0.4, 0.1, 0.2, 0.8]);
+                imshow(forehead);
+                title('Forehead');
+                
+                % Subplot for Zoomed Forehead
+                subplot('Position', [0.65, 0.1, 0.3, 0.8]);
+                imshow(zoomedForehead);
+                title(['Zoomed Forehead ' num2str(faceIdx)]);
+                
+                % Save the extracted forehead
+                foreheadFilename = sprintf('face_%02d_forehead.png', faceIdx);
+                foreheadPath = fullfile(foreheadFolder, foreheadFilename);
+                imwrite(zoomedForehead, foreheadPath);
+            end
+            
+            % Adjust figure layout
+            set(gcf, 'Units', 'Normalized', 'OuterPosition', [0, 0.04, 1, 0.96]);
+            msgbox('Complete');
+            disp('Foreheads extraction and display complete.');
+            
+            % Create a folder for saving extracted foreheads
+            
+            
+        end
+
+        % Button pushed function: ExtractFeaturesButton
+        function ExtractFeaturesButtonPushed(app, event)
+            % Load forehead images
+            foreheadFolder='forehead'
+            % Load forehead images
+            % Load forehead images
+            foreheadFiles = dir(fullfile(foreheadFolder, '*.png'));
+            numForeheads = numel(foreheadFiles);
+            hogFeatures = [];
+            lbpFeatures = [];
+            harrisFeatures = [];
+            
+            % Determine the maximum length of HOG features
+            maxHOGLength = 0;
+            for idx = 1:numForeheads
+                foreheadPath = fullfile(foreheadFolder, foreheadFiles(idx).name);
+                forehead = imread(foreheadPath);
+                hogFeature = extractHOGFeatures(rgb2gray(forehead));
+                maxHOGLength = max(maxHOGLength, length(hogFeature));
+            end
+            close all;
+            % Loop through all forehead images
+            for idx = 1:numForeheads
+                
+                foreheadPath = fullfile(foreheadFolder, foreheadFiles(idx).name);
+                forehead = imread(foreheadPath);
+                
+                % Extract HOG features and pad with zeros
+                hogFeature = extractHOGFeatures(rgb2gray(forehead));
+                paddedHOGFeature = [hogFeature, zeros(1, maxHOGLength - length(hogFeature))];
+                hogFeatures = [hogFeatures; paddedHOGFeature];
+                
+                % Extract LBP features
+                lbpFeature = extractLBPFeatures(rgb2gray(forehead));
+                lbpFeatures = [lbpFeatures; lbpFeature];
+                
+                % Extract Harris corner points
+                grayForehead = rgb2gray(forehead);
+                harrisPoints = detectHarrisFeatures(grayForehead);
+                %harrisFeatures = [harrisFeatures; harrisPoints.Count];
+                harrisFeatures=[harrisFeatures harrisPoints.Metric(1:70)];
+                
+                % Display figure for each image and its features
+                figure;
+                subplot(1, 3, 1);
+                imshow(forehead);
+                title(['Image ' num2str(idx)]);
+                
+                subplot(1, 3, 2);
+                 imshow(forehead);
+                 hold on;
+                plot(paddedHOGFeature*rand, 'b', 'DisplayName', 'HOG');
+                hold on;
+                plot(lbpFeature, 'r', 'DisplayName', 'LBP');
+                hold off;
+                legend;
+                title('Extracted Features');
+                
+                subplot(1, 3, 3);
+                imshow(forehead);
+                hold on;
+                plot(harrisPoints.selectStrongest(100));
+                hold off;
+                title('Harris Corner Points');
+            end
+            
+            % Save features in MAT file
+            save('forehead_features.mat', 'hogFeatures', 'lbpFeatures', 'harrisFeatures');
+            disp('Features extraction, display, and saving complete.');
+            
+            
+        end
+
+        % Button pushed function: CompareFeaturesButton
+        function CompareFeaturesButtonPushed(app, event)
+             
+             run validatefeatures.m;
+             
+             
+             
+             
+     
+        end
+
+        % Button pushed function: 
+        % ApplyImprovedFeatureSelectionButton
+        function ApplyImprovedFeatureSelectionButtonPushed(app, event)
+            
+            save('forehead_features.mat', 'hogFeatures', 'lbpFeatures', 'harrisFeatures');
+          
+        end
+
+        % Button pushed function: TrainandClassifyButton
+        function TrainandClassifyButtonPushed(app, event)
+            
+        end
+
+        % Button pushed function: CompareButton
+        function CompareButtonPushed(app, event)
+            
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 543 436];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create ProcessingPanelDeepLearningModel
+            app.ProcessingPanelDeepLearningModel = uipanel(app.UIFigure);
+            app.ProcessingPanelDeepLearningModel.Title = 'Processing Panel(Deep Learning Model)';
+            app.ProcessingPanelDeepLearningModel.Position = [9 137 260 265];
+
+            % Create UploadYourVideoButton
+            app.UploadYourVideoButton = uibutton(app.ProcessingPanelDeepLearningModel, 'push');
+            app.UploadYourVideoButton.ButtonPushedFcn = createCallbackFcn(app, @UploadYourVideoButtonPushed, true);
+            app.UploadYourVideoButton.Position = [30 209 167 22];
+            app.UploadYourVideoButton.Text = 'Upload Your Video';
+
+            % Create ZoomAndExtractForeheadButton
+            app.ZoomAndExtractForeheadButton = uibutton(app.ProcessingPanelDeepLearningModel, 'push');
+            app.ZoomAndExtractForeheadButton.ButtonPushedFcn = createCallbackFcn(app, @ZoomAndExtractForeheadButtonPushed, true);
+            app.ZoomAndExtractForeheadButton.Position = [30 174 167 22];
+            app.ZoomAndExtractForeheadButton.Text = 'Zoom And Extract Forehead';
+
+            % Create ExtractFeaturesButton
+            app.ExtractFeaturesButton = uibutton(app.ProcessingPanelDeepLearningModel, 'push');
+            app.ExtractFeaturesButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractFeaturesButtonPushed, true);
+            app.ExtractFeaturesButton.Position = [30 141 167 22];
+            app.ExtractFeaturesButton.Text = 'Extract Features';
+
+            % Create CompareFeaturesButton
+            app.CompareFeaturesButton = uibutton(app.ProcessingPanelDeepLearningModel, 'push');
+            app.CompareFeaturesButton.ButtonPushedFcn = createCallbackFcn(app, @CompareFeaturesButtonPushed, true);
+            app.CompareFeaturesButton.Position = [31 107 166 22];
+            app.CompareFeaturesButton.Text = 'Compare Features';
+
+            % Create ConvolutionModelPanel
+            app.ConvolutionModelPanel = uipanel(app.UIFigure);
+            app.ConvolutionModelPanel.Title = 'Convolution Model';
+            app.ConvolutionModelPanel.Position = [285 145 223 265];
+
+            % Create ApplyImprovedFeatureSelectionButton
+            app.ApplyImprovedFeatureSelectionButton = uibutton(app.ConvolutionModelPanel, 'push');
+            app.ApplyImprovedFeatureSelectionButton.ButtonPushedFcn = createCallbackFcn(app, @ApplyImprovedFeatureSelectionButtonPushed, true);
+            app.ApplyImprovedFeatureSelectionButton.Position = [11 211 201 22];
+            app.ApplyImprovedFeatureSelectionButton.Text = 'Apply Improved Feature Selection ';
+
+            % Create TrainandClassifyButton
+            app.TrainandClassifyButton = uibutton(app.ConvolutionModelPanel, 'push');
+            app.TrainandClassifyButton.ButtonPushedFcn = createCallbackFcn(app, @TrainandClassifyButtonPushed, true);
+            app.TrainandClassifyButton.Position = [11 180 193 22];
+            app.TrainandClassifyButton.Text = 'Train and Classify ';
+
+            % Create CompareButton
+            app.CompareButton = uibutton(app.ConvolutionModelPanel, 'push');
+            app.CompareButton.ButtonPushedFcn = createCallbackFcn(app, @CompareButtonPushed, true);
+            app.CompareButton.Position = [11 145 193 22];
+            app.CompareButton.Text = 'Compare';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = rupinderp
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
